@@ -31,5 +31,9 @@ RUN pip install --default-timeout=1000 --retries 10 \
 
 COPY . .
 
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+RUN chmod +x /app/start-railway.sh
+
+# Railway: do not set a custom "Start Command" in the dashboard that skips this script,
+# or migrations will never run and auth tables (users_user) will be missing.
+CMD ["/bin/sh", "/app/start-railway.sh"]
 

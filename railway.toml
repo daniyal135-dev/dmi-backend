@@ -1,0 +1,6 @@
+# https://docs.railway.com/reference/config-as-code
+# If the service "Start Command" in the dashboard overrides Docker CMD, clear it
+# or set it to: /bin/sh /app/start-railway.sh
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
