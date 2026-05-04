@@ -4,5 +4,12 @@
 set -e
 echo "[start] Running database migrations..."
 python manage.py migrate --noinput
-echo "[start] Migrations done. Starting web server on port ${PORT:-8000}..."
-exec python manage.py runserver "0.0.0.0:${PORT:-8000}"
+echo "[start] Migrations done. Starting Gunicorn on port ${PORT:-8000}..."
+# runserver is dev-only; Railway often returns 502 with it. Gunicorn is the supported WSGI server.
+exec gunicorn dmi_project.wsgi:application \
+  --bind "0.0.0.0:${PORT:-8000}" \
+  --workers 1 \
+  --threads 2 \
+  --timeout 120 \
+  --access-logfile - \
+  --error-logfile -
