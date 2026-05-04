@@ -20,13 +20,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         
         # Check if it's an email (contains @)
         if '@' in username_or_email:
-            # Try to find user by email
-            try:
-                user = User.objects.get(email=username_or_email)
-                # Replace email with actual username for authentication
-                attrs['username'] = user.username
-            except User.DoesNotExist:
-                pass  # Let it fail naturally with "invalid credentials"
+            qs = User.objects.filter(email__iexact=username_or_email)
+            n = qs.count()
+            if n == 1:
+                attrs['username'] = qs.first().username
+            elif n > 1:
+                raise serializers.ValidationError(
+                    {'username': 'Multiple accounts use this email; sign in with your username.'}
+                )
         
         # Call parent validation
         return super().validate(attrs)

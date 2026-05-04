@@ -9,7 +9,11 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [
+    h.strip()
+    for h in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+    if h.strip()
+]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -57,16 +61,31 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'dmi_project.wsgi.application'
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': config('DB_NAME', default='dmi_db'),
-        'USER': config('DB_USER', default='user'),
-        'PASSWORD': config('DB_PASSWORD', default='password'),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='5432'),
-    }
+# Railway / managed Postgres often requires TLS; without sslmode=require, DB calls can 500.
+_db_host = config('DB_HOST', default='localhost')
+_ssl_flag = config('DATABASE_SSL_REQUIRE', default='').strip().lower()
+if _ssl_flag in ('true', '1', 'yes'):
+    _pg_ssl = True
+elif _ssl_flag in ('false', '0', 'no'):
+    _pg_ssl = False
+else:
+    _h = _db_host.lower()
+    _pg_ssl = any(
+        m in _h for m in ('railway', 'neon.tech', 'amazonaws.com', 'supabase.co')
+    )
+
+_db = {
+    'ENGINE': 'django.db.backends.postgresql',
+    'NAME': config('DB_NAME', default='dmi_db'),
+    'USER': config('DB_USER', default='user'),
+    'PASSWORD': config('DB_PASSWORD', default='password'),
+    'HOST': _db_host,
+    'PORT': config('DB_PORT', default='5432'),
 }
+if _pg_ssl:
+    _db['OPTIONS'] = {'sslmode': 'require'}
+
+DATABASES = {'default': _db}
 
 AUTH_PASSWORD_VALIDATORS = [
     {

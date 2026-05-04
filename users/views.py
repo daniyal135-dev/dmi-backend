@@ -4,6 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from .serializers import UserSerializer, CustomTokenObtainPairSerializer
 
 User = get_user_model()
@@ -16,11 +17,17 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 def register(request):
     serializer = UserSerializer(data=request.data)
     if serializer.is_valid():
-        user = User.objects.create_user(
-            username=serializer.validated_data['username'],
-            email=serializer.validated_data['email'],
-            password=request.data['password']
-        )
+        try:
+            user = User.objects.create_user(
+                username=serializer.validated_data['username'],
+                email=serializer.validated_data['email'],
+                password=request.data['password'],
+            )
+        except IntegrityError:
+            return Response(
+                {'error': 'Username or email is already registered.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
     errors = serializer.errors
     # Clear message when username is already taken
