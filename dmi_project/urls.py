@@ -7,7 +7,9 @@ from users.views import health_check
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # DB check (JSON). Use either /api/health/ or /health/ on Railway.
     path('api/health/', health_check),
+    path('health/', health_check),
     path('api/auth/', include('users.urls')),
     path('api/analysis/', include('analysis.urls')),
     path('api/forum/', include('forum.urls')),
