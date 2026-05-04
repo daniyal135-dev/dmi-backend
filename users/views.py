@@ -4,10 +4,45 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, connection
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+
 from .serializers import UserSerializer, CustomTokenObtainPairSerializer
 
 User = get_user_model()
+
+
+@require_GET
+def health_check(request):
+    """JSON health — DB reachable + users table (no auth). Use for Railway / Postman."""
+    checks = {}
+    errors = []
+    try:
+        connection.ensure_connection()
+        checks["database_connection"] = "ok"
+    except Exception as e:
+        checks["database_connection"] = "failed"
+        errors.append({"step": "ensure_connection", "error": repr(e)})
+
+    if checks.get("database_connection") == "ok":
+        try:
+            User.objects.exists()
+            checks["users_query"] = "ok"
+        except Exception as e:
+            checks["users_query"] = "failed"
+            errors.append({"step": "users_query", "error": repr(e)})
+
+    ok = (
+        checks.get("database_connection") == "ok"
+        and checks.get("users_query") == "ok"
+    )
+    payload = {"status": "ok" if ok else "error", "checks": checks}
+    if errors:
+        payload["errors"] = errors
+    return JsonResponse(payload, status=200 if ok else 503)
+
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
@@ -22,6 +57,11 @@ def register(request):
                 username=serializer.validated_data['username'],
                 email=serializer.validated_data['email'],
                 password=request.data['password'],
+            )
+        except DjangoValidationError as e:
+            return Response(
+                {'error': e.messages if hasattr(e, 'messages') else str(e)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except IntegrityError:
             return Response(
