@@ -1,0 +1,72 @@
+# Virtual environment (not needed in container)
+venv/
+env/
+.venv/
+ENV/
+
+# Dataset (too large, not needed in container)
+dataset/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Static files (will be generated in container)
+staticfiles/
+*.log
+
+# Media files (can be mounted as volume if needed)
+media/uploads/
+media/video_analysis/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentation
+*.md
+README*
+
+# Test files
+test_*.py
+*_test.py
+
+# Environment files
+.env
+.env.local
+
+# Node modules (if any)
+node_modules/
+
+# Large model files (can be mounted as volume)
+ml_models/weights/*.pth
+ml_models/weights/checkpoints/
+
+# Keep these (needed):
+# - ml_models/ (code)
+# - dmi_project/ (Django settings)
+# - analysis/, forum/, archive/, users/ (apps)
+# - manage.py
+# - requirements.txt
+
