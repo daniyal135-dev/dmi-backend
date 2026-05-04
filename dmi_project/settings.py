@@ -139,6 +139,10 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://dmi-frontend.vercel.app",
 ]
+# Allow Vercel preview deployments too (e.g. dmi-frontend-git-*.vercel.app)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
 
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True
@@ -150,7 +154,7 @@ if DEBUG:
 # Django 4+ — trusted origins for HTTPS (admin, CSRF on cross-subdomain if needed)
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
-    default="https://dmi-frontend.vercel.app,https://dmi-backend-production.up.railway.app",
+    default="https://dmi-frontend.vercel.app,https://*.vercel.app,https://dmi-backend-production.up.railway.app",
 ).split(",")
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in CSRF_TRUSTED_ORIGINS if o.strip()]
 
