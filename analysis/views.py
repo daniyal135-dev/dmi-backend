@@ -11,9 +11,9 @@ from pathlib import Path
 from .models import AnalysisResult
 from .serializers import AnalysisResultSerializer
 
-# Import our trained model services
-from ml_models.image_detection.inference import ImageDetectionService
-from ml_models.text_detection.inference import TextDetectionService
+# ML stacks (torch/transformers) are imported lazily inside get_model_service /
+# get_text_detection_service so Django auth/admin can start on Railway without OOM/timeout.
+
 
 class AnalysisResultListCreateView(generics.ListCreateAPIView):
     serializer_class = AnalysisResultSerializer
@@ -39,6 +39,8 @@ _current_model_name = None
 
 def get_model_service():
     """Get or create the image detection service (ViT phase4_replay_best). Loads once."""
+    from ml_models.image_detection.inference import ImageDetectionService
+
     global _model_service, _current_model_name
     model_name = getattr(settings, 'MODEL_NAME', 'phase4_replay_best.pth')
     model_path = os.path.join(settings.BASE_DIR, 'ml_models', 'weights', model_name)
@@ -63,6 +65,8 @@ def get_text_detection_service():
     Load TextDetectionService once per process.
     Avoids reloading ~700MB weights + tokenizer on every /api/analysis/text/ request.
     """
+    from ml_models.text_detection.inference import TextDetectionService
+
     global _text_detection_service, _text_detection_service_key
     text_model_name = getattr(settings, "TEXT_MODEL_NAME", "deberta-v3-bestmodel.pth")
     model_path = os.path.join(
