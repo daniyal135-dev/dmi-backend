@@ -70,9 +70,16 @@ elif _ssl_flag in ('false', '0', 'no'):
     _pg_ssl = False
 else:
     _h = _db_host.lower()
-    _pg_ssl = any(
-        m in _h for m in ('railway', 'neon.tech', 'amazonaws.com', 'supabase.co')
-    )
+    # Railway private Postgres (*.railway.internal): TLS usually breaks here — do not force SSL.
+    # Public Railway DB hostnames use *.proxy.rlwy.net — those need sslmode=require.
+    if 'railway.internal' in _h:
+        _pg_ssl = False
+    elif 'rlwy.net' in _h:
+        _pg_ssl = True
+    elif any(m in _h for m in ('neon.tech', 'amazonaws.com', 'supabase.co')):
+        _pg_ssl = True
+    else:
+        _pg_ssl = False
 
 _db = {
     'ENGINE': 'django.db.backends.postgresql',
