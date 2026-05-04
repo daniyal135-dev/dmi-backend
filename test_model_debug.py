@@ -62,7 +62,7 @@ if len(sys.argv) > 1:
     print("="*70)
     
     # Load and preprocess image
-    from ml_models.preprocessing import ImagePreprocessor
+    from ml_models.preprocessing.image_preprocessor import ImagePreprocessor
     preprocessor = ImagePreprocessor()
     input_tensor = preprocessor.preprocess(test_image)
     input_tensor = input_tensor.to(service.device)
