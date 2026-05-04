@@ -118,6 +118,7 @@ REST_FRAMEWORK = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://dmi-frontend.vercel.app",
 ]
 
 # Allow credentials for CORS
@@ -126,6 +127,13 @@ CORS_ALLOW_CREDENTIALS = True
 # For development, allow all origins (remove in production)
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
+
+# Django 4+ — trusted origins for HTTPS (admin, CSRF on cross-subdomain if needed)
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="https://dmi-frontend.vercel.app,https://dmi-backend-production.up.railway.app",
+).split(",")
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in CSRF_TRUSTED_ORIGINS if o.strip()]
 
 CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
