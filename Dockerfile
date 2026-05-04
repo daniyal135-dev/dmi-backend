@@ -17,15 +17,17 @@ RUN apt-get update && apt-get install -y \
 # Upgrade pip
 RUN pip install --upgrade pip setuptools wheel
 
-# Copy requirements and install packages with retries
-# Note: Install CPU-only PyTorch for Docker (GPU requires NVIDIA Container Toolkit)
+# Copy requirements — install order matters for image size:
+# grad-cam / transformers pull torch from PyPI (CUDA ~2GB+) if torch is not already installed.
+# Install CPU-only PyTorch FIRST, then the rest (excluding torch/torchvision lines).
 COPY requirements.txt .
-# First install all packages except torch/torchvision
-RUN pip install --default-timeout=1000 --retries 10 $(grep -v "^torch" requirements.txt | grep -v "^torchvision" | grep -v "^#" | tr '\n' ' ') || true
-# Then install CPU-only PyTorch (much faster, no CUDA libraries)
-RUN pip install --default-timeout=1000 --retries 10 torch torchvision --index-url https://download.pytorch.org/whl/cpu || \
-    (echo "First attempt failed, retrying..." && \
-     pip install --default-timeout=1000 --retries 10 torch torchvision --index-url https://download.pytorch.org/whl/cpu)
+
+RUN pip install --default-timeout=1000 --retries 10 \
+    torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --default-timeout=1000 --retries 10 \
+    $(grep -v "^torch" requirements.txt | grep -v "^torchvision" | grep -v "^#" | sed '/^[[:space:]]*$/d' | tr '\n' ' ')
 
 COPY . .
 
