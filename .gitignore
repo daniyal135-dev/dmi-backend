@@ -12,6 +12,7 @@ __pycache__/
 # Django / local
 .env
 .env.*
+!.env.example
 *.sqlite3
 db.sqlite3
 media/

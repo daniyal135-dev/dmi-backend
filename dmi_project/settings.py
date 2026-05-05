@@ -151,6 +151,12 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https://.*\.vercel\.app$",
 ]
 
+_cors_extra = config("CORS_EXTRA_ORIGINS", default="").strip()
+if _cors_extra:
+    CORS_ALLOWED_ORIGINS.extend(
+        [o.strip() for o in _cors_extra.split(",") if o.strip()]
+    )
+
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True
 
@@ -164,6 +170,11 @@ CSRF_TRUSTED_ORIGINS = config(
     default="https://dmi-frontend.vercel.app,https://*.vercel.app,https://dmi-backend-production.up.railway.app",
 ).split(",")
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in CSRF_TRUSTED_ORIGINS if o.strip()]
+_csrf_extra = config("CSRF_TRUSTED_ORIGINS_EXTRA", default="").strip()
+if _csrf_extra:
+    CSRF_TRUSTED_ORIGINS.extend(
+        [o.strip() for o in _csrf_extra.split(",") if o.strip()]
+    )
 
 CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
