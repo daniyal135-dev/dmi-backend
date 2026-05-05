@@ -117,6 +117,12 @@ def _vit_combined_explainability(model, pil_rgb: Image.Image, vit_transform, dev
     return combined
 
 
+def _save_rgb_jpg(pil_rgb: Image.Image, save_path: str) -> None:
+    """Save PIL RGB image as JPEG with no overlay (used when verdict is REAL)."""
+    arr = np.array(pil_rgb.convert("RGB"))
+    cv2.imwrite(save_path, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
+
+
 def _save_heatmap_overlay(original_image, cam, save_path, alpha=0.5):
     """Overlay heatmap on image and save. cam: (H,W) 0-1 float."""
     if isinstance(original_image, Image.Image):
@@ -250,17 +256,21 @@ class ImageDetectionService:
             heatmap_path = None
             if output_dir:
                 img = Image.open(image_path).convert("RGB")
-                cam = _vit_combined_explainability(
-                    self.model,
-                    img,
-                    self.vit_transform,
-                    self.device,
-                    int(result["predicted_class"]),
-                )
                 os.makedirs(output_dir, exist_ok=True)
                 image_name = Path(image_path).stem
                 heatmap_path = os.path.join(output_dir, f'{image_name}_heatmap.jpg')
-                _save_heatmap_overlay(img, cam, heatmap_path)
+                if result["verdict"] == "real":
+                    # No manipulation-style overlay for authentic predictions (UX: avoid false "hot spots").
+                    _save_rgb_jpg(img, heatmap_path)
+                else:
+                    cam = _vit_combined_explainability(
+                        self.model,
+                        img,
+                        self.vit_transform,
+                        self.device,
+                        int(result["predicted_class"]),
+                    )
+                    _save_heatmap_overlay(img, cam, heatmap_path)
             result['heatmap_path'] = heatmap_path
             result['explanation'] = self.generate_explanation(result)
             return result
@@ -384,10 +394,11 @@ class ImageDetectionService:
                     f"compression, or unusual characteristics. Further analysis recommended."
                 )
         
-        explanation += (
-            " The overlay combines attention rollout and class-sensitive gradients "
-            "(approximate explanation — not a pixel-perfect manipulation mask)."
-        )
+        if verdict == "fake":
+            explanation += (
+                " The overlay combines attention rollout and class-sensitive gradients "
+                "(approximate explanation — not a pixel-perfect manipulation mask)."
+            )
         return explanation
     
     def analyze_image_with_metadata(self, image_path, output_dir=None):
