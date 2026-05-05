@@ -117,12 +117,6 @@ def _vit_combined_explainability(model, pil_rgb: Image.Image, vit_transform, dev
     return combined
 
 
-def _save_rgb_jpg(pil_rgb: Image.Image, save_path: str) -> None:
-    """Save PIL RGB image as JPEG with no overlay (used when verdict is REAL)."""
-    arr = np.array(pil_rgb.convert("RGB"))
-    cv2.imwrite(save_path, cv2.cvtColor(arr, cv2.COLOR_RGB2BGR))
-
-
 def _save_heatmap_overlay(original_image, cam, save_path, alpha=0.5):
     """Overlay heatmap on image and save. cam: (H,W) 0-1 float."""
     if isinstance(original_image, Image.Image):
@@ -135,6 +129,26 @@ def _save_heatmap_overlay(original_image, cam, save_path, alpha=0.5):
     cam_resized = cv2.resize(cam, (w, h))
     cam_u8 = np.uint8(255 * np.clip(cam_resized, 0, 1))
     heatmap = cv2.applyColorMap(cam_u8, cv2.COLORMAP_JET)
+    heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+    overlay = cv2.addWeighted(img, 1 - alpha, heatmap, alpha, 0)
+    cv2.imwrite(save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
+
+
+def _save_authentic_attention_overlay(original_image, cam, save_path, alpha=0.26):
+    """
+    Same relevance map as fake path, but WINTER colormap (blue→cyan→green) and lighter blend.
+    Shows model attention without red «manipulation» cues.
+    """
+    if isinstance(original_image, Image.Image):
+        img = np.array(original_image.convert("RGB"))
+    else:
+        img = np.array(original_image) if hasattr(original_image, "convert") else original_image
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+    h, w = img.shape[:2]
+    cam_resized = cv2.resize(cam.astype(np.float32), (w, h))
+    cam_u8 = np.uint8(255 * np.clip(cam_resized, 0, 1))
+    heatmap = cv2.applyColorMap(cam_u8, cv2.COLORMAP_WINTER)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     overlay = cv2.addWeighted(img, 1 - alpha, heatmap, alpha, 0)
     cv2.imwrite(save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
@@ -259,17 +273,16 @@ class ImageDetectionService:
                 os.makedirs(output_dir, exist_ok=True)
                 image_name = Path(image_path).stem
                 heatmap_path = os.path.join(output_dir, f'{image_name}_heatmap.jpg')
+                cam = _vit_combined_explainability(
+                    self.model,
+                    img,
+                    self.vit_transform,
+                    self.device,
+                    int(result["predicted_class"]),
+                )
                 if result["verdict"] == "real":
-                    # No manipulation-style overlay for authentic predictions (UX: avoid false "hot spots").
-                    _save_rgb_jpg(img, heatmap_path)
+                    _save_authentic_attention_overlay(img, cam, heatmap_path)
                 else:
-                    cam = _vit_combined_explainability(
-                        self.model,
-                        img,
-                        self.vit_transform,
-                        self.device,
-                        int(result["predicted_class"]),
-                    )
                     _save_heatmap_overlay(img, cam, heatmap_path)
             result['heatmap_path'] = heatmap_path
             result['explanation'] = self.generate_explanation(result)
@@ -398,6 +411,11 @@ class ImageDetectionService:
             explanation += (
                 " The overlay combines attention rollout and class-sensitive gradients "
                 "(approximate explanation — not a pixel-perfect manipulation mask)."
+            )
+        elif verdict == "real":
+            explanation += (
+                " The preview uses a subtle cool-toned attention map (blue/green) for transparency — "
+                "it shows where the model focused, not manipulation warnings."
             )
         return explanation
     
