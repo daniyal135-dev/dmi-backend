@@ -134,10 +134,10 @@ def _save_heatmap_overlay(original_image, cam, save_path, alpha=0.5):
     cv2.imwrite(save_path, cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
 
 
-def _save_authentic_attention_overlay(original_image, cam, save_path, alpha=0.26):
+def _save_authentic_attention_overlay(original_image, cam, save_path, alpha=0.44):
     """
-    Same relevance map as fake path, but WINTER colormap (blue→cyan→green) and lighter blend.
-    Shows model attention without red «manipulation» cues.
+    Same relevance map as fake path, but WINTER colormap (blue→cyan→green).
+    Stronger blend than before so the heatmap is clearly visible — still no red JET manipulation styling.
     """
     if isinstance(original_image, Image.Image):
         img = np.array(original_image.convert("RGB"))
@@ -147,7 +147,9 @@ def _save_authentic_attention_overlay(original_image, cam, save_path, alpha=0.26
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
     h, w = img.shape[:2]
     cam_resized = cv2.resize(cam.astype(np.float32), (w, h))
-    cam_u8 = np.uint8(255 * np.clip(cam_resized, 0, 1))
+    # Slightly boost mid-tones so patterns are easier to see on bright photos
+    cam_enhanced = np.clip(cam_resized ** 0.82, 0, 1)
+    cam_u8 = np.uint8(255 * cam_enhanced)
     heatmap = cv2.applyColorMap(cam_u8, cv2.COLORMAP_WINTER)
     heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
     overlay = cv2.addWeighted(img, 1 - alpha, heatmap, alpha, 0)
