@@ -39,19 +39,82 @@ from torchvision import transforms
 from transformers import ViTForImageClassification
 
 
-def _vit_attention_heatmap(model, input_tensor, device):
-    """ViT: get attention map from last layer (class token to patches), shape (14,14) -> (224,224)."""
+def _attention_rollout_cls_to_patches(attentions_tuple):
+    """
+    Multi-layer attention rollout (Chefer et al. style): CLS → patch tokens.
+    attentions_tuple: layer tensors (batch, heads, N, N), N = 1 + num_patches (CLS first).
+    Returns (batch, num_patches) attention weights.
+    """
+    if not attentions_tuple:
+        return None
+    device = attentions_tuple[0].device
+    dtype = attentions_tuple[0].dtype
+    batch_size, _, num_tokens, _ = attentions_tuple[0].shape
+    eye = torch.eye(num_tokens, device=device, dtype=dtype).unsqueeze(0).expand(batch_size, -1, -1)
+    rollout = eye.clone()
+    for attn in attentions_tuple:
+        attn_mean = attn.mean(dim=1)
+        attn_mean = attn_mean + eye
+        attn_mean = attn_mean / attn_mean.sum(dim=-1, keepdim=True).clamp(min=1e-8)
+        rollout = torch.bmm(attn_mean, rollout)
+    return rollout[:, 0, 1:]
+
+
+def _normalize_cam(cam: np.ndarray) -> np.ndarray:
+    cam = cam.astype(np.float32)
+    lo, hi = cam.min(), cam.max()
+    if hi - lo < 1e-8:
+        return np.zeros_like(cam)
+    return (cam - lo) / (hi - lo)
+
+
+def _vit_combined_explainability(model, pil_rgb: Image.Image, vit_transform, device, target_class_idx: int):
+    """
+    Heatmap closer to 'what drove this class' than raw last-layer CLS attention.
+
+    Combines:
+    - Attention rollout (global patch relevance via CLS across all layers)
+    - Input-gradient saliency for the predicted-class logit (local sensitivity)
+
+    Not a forensic ground-truth mask; fused maps usually align better with face/content than CLS-only.
+    """
     model.eval()
+    input_tensor = vit_transform(pil_rgb).unsqueeze(0).to(device).detach().clone().requires_grad_(True)
+
+    out = model(pixel_values=input_tensor, output_attentions=True)
+    attentions = out.attentions
+
     with torch.no_grad():
-        out = model(pixel_values=input_tensor, output_attentions=True)
-    if not out.attentions:
-        return np.zeros((224, 224), dtype=np.float32)
-    att = out.attentions[-1]   # (batch, heads, 197, 197)
-    att = att.mean(dim=1)     # (1, 197, 197)
-    att = att[0, 0, 1:].cpu().numpy().reshape(14, 14)
-    att = (att - att.min()) / (att.max() - att.min() + 1e-8)
-    cam = cv2.resize(att.astype(np.float32), (224, 224))
-    return cam
+        cls_to_patch = _attention_rollout_cls_to_patches(attentions)
+        if cls_to_patch is None:
+            rollout_hw = np.zeros((224, 224), dtype=np.float32)
+        else:
+            np196 = cls_to_patch[0].detach().float().cpu().numpy()
+            nh = nw = int(np.sqrt(np196.shape[0]))
+            if nh * nw != np196.shape[0]:
+                rollout_hw = np.zeros((224, 224), dtype=np.float32)
+            else:
+                rollout_map = np196.reshape(nh, nw)
+                rollout_map = _normalize_cam(rollout_map)
+                rollout_hw = cv2.resize(rollout_map.astype(np.float32), (224, 224))
+
+    logits = out.logits
+    score = logits[0, target_class_idx]
+    model.zero_grad(set_to_none=True)
+    score.backward(retain_graph=False)
+
+    if input_tensor.grad is None:
+        sal_hw = np.zeros((224, 224), dtype=np.float32)
+    else:
+        sal = input_tensor.grad.abs().mean(dim=1)[0].detach().float().cpu().numpy()
+        sal_hw = _normalize_cam(sal)
+
+    rollout_hw = _normalize_cam(rollout_hw)
+    combined = 0.45 * rollout_hw + 0.55 * sal_hw
+    combined = _normalize_cam(combined)
+    combined = cv2.GaussianBlur(combined, (9, 9), 0)
+    combined = _normalize_cam(combined)
+    return combined
 
 
 def _save_heatmap_overlay(original_image, cam, save_path, alpha=0.5):
@@ -187,8 +250,13 @@ class ImageDetectionService:
             heatmap_path = None
             if output_dir:
                 img = Image.open(image_path).convert("RGB")
-                input_tensor = self.vit_transform(img).unsqueeze(0).to(self.device)
-                cam = _vit_attention_heatmap(self.model, input_tensor, self.device)
+                cam = _vit_combined_explainability(
+                    self.model,
+                    img,
+                    self.vit_transform,
+                    self.device,
+                    int(result["predicted_class"]),
+                )
                 os.makedirs(output_dir, exist_ok=True)
                 image_name = Path(image_path).stem
                 heatmap_path = os.path.join(output_dir, f'{image_name}_heatmap.jpg')
@@ -316,7 +384,10 @@ class ImageDetectionService:
                     f"compression, or unusual characteristics. Further analysis recommended."
                 )
         
-        explanation += " The heatmap highlights regions that most influenced the model's decision."
+        explanation += (
+            " The overlay combines attention rollout and class-sensitive gradients "
+            "(approximate explanation — not a pixel-perfect manipulation mask)."
+        )
         return explanation
     
     def analyze_image_with_metadata(self, image_path, output_dir=None):
